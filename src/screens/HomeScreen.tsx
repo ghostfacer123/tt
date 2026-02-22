@@ -41,115 +41,197 @@ export default function HomeScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
- const fetchSplits = useCallback(async () => {
-  if (!user) return;
+  const fetchSplits = useCallback(async () => {
+    if (!user) return;
 
-  try {
-    // ✅ FETCH UNSETTLED SPLITS
-    const { data: participantData } = await supabase
-      .from('split_participants')
-      .select('*, splits!inner(*)')
-      .eq('user_id', user.id)
-      .eq('splits.settled', false)
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    // ✅ FETCH CASH DEBTS
-    const { data: cashDebts } = await supabase
-      .from('simple_debts')
-      .select('*')
-      .or(`from_user.eq.${user.id},to_user.eq.${user.id}`)
-      .eq('status', 'pending');
-
-    console.log('💰 [Home] Cash debts:', cashDebts);
-    console.log('📊 [Home] Participant data:', participantData);
-
-    let owed = 0;
-    let owe = 0;
-
-    // ✅ CALCULATE SPLIT BALANCES - NEED TO FETCH OTHER PARTICIPANTS
-    const splitList: SplitWithParticipant[] = [];
-
-    if (participantData && participantData.length > 0) {
-      // Get all split IDs
-      const splitIds = participantData.map(p => p.split_id);
-
-      // Fetch ALL participants for those splits
-      const { data: allParticipants } = await supabase
+    try {
+      // ✅ FETCH UNSETTLED SPLITS
+      const { data: participantData } = await supabase
         .from('split_participants')
+        .select('*, splits!inner(*)')
+        .eq('user_id', user.id)
+        .eq('splits.settled', false)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // ✅ FETCH CASH DEBTS
+      const { data: cashDebts } = await supabase
+        .from('simple_debts')
         .select('*')
-        .in('split_id', splitIds);
+        .or(`from_user.eq.${user.id},to_user.eq.${user.id}`)
+        .eq('status', 'pending');
 
-      console.log('👥 [Home] All participants:', allParticipants);
+      console.log('💰 [Home] Cash debts:', cashDebts);
+      console.log('📊 [Home] Participant data:', participantData);
 
-      // Group by split
-      const splitMap = new Map();
-      for (const p of participantData) {
-        if (p.splits) {
-          splitMap.set(p.split_id, {
-            split: p.splits as Split,
-            myParticipant: p as SplitParticipant,
-            allParticipants: allParticipants?.filter(ap => ap.split_id === p.split_id) || []
-          });
-        }
-      }
+      let owed = 0;
+      let owe = 0;
 
-      // Calculate balances
-      for (const [splitId, data] of splitMap) {
-        const { split, myParticipant, allParticipants: participants } = data;
-        const isPayer = split.paid_by === user.id;
+      // ✅ CALCULATE SPLIT BALANCES - NEED TO FETCH OTHER PARTICIPANTS
+      const splitList: SplitWithParticipant[] = [];
 
-        if (isPayer) {
-          // ✅ YOU PAID - Calculate how much OTHERS owe you
-          const othersUnpaid = participants
-            .filter((p: any) => p.user_id !== user.id)
-            .reduce((sum: number, p: any) => {
-              const unpaid = parseFloat(p.total_amount) - parseFloat(p.amount_paid);
-              return sum + unpaid;
-            }, 0);
+      if (participantData && participantData.length > 0) {
+        // Get all split IDs
+        const splitIds = participantData.map((p) => p.split_id);
 
-          owed += othersUnpaid;
+        // Fetch ALL participants for those splits
+        const { data: allParticipants } = await supabase
+          .from('split_participants')
+          .select('*')
+          .in('split_id', splitIds);
 
-          // ✅ ONLY SHOW IN HISTORY IF OTHERS STILL OWE YOU
-          if (othersUnpaid > 0) {
-            splitList.push({ ...split, my_participant: myParticipant });
-          }
-        } else {
-          // ✅ SOMEONE ELSE PAID - Calculate how much YOU owe
-          const yourUnpaid = parseFloat(myParticipant.total_amount) - parseFloat(myParticipant.amount_paid);
-          owe += yourUnpaid;
+        console.log('👥 [Home] All participants:', allParticipants);
 
-          // ✅ ONLY SHOW IN HISTORY IF YOU STILL OWE
-          if (yourUnpaid > 0) {
-            splitList.push({ ...split, my_participant: myParticipant });
+        // Group by split
+        const splitMap = new Map();
+        for (const p of participantData) {
+          if (p.splits) {
+            splitMap.set(p.split_id, {
+              split: p.splits as Split,
+              myParticipant: p as SplitParticipant,
+              allParticipants: allParticipants?.filter((ap) => ap.split_id === p.split_id) || [],
+            });
           }
         }
-      }
-    }
 
-    // ✅ CALCULATE CASH DEBT BALANCES
-    if (cashDebts) {
-      for (const debt of cashDebts) {
-        if (debt.from_user === user.id) {
-          owe += parseFloat(debt.amount);
-        } else {
-          owed += parseFloat(debt.amount);
+        // Calculate balances
+        for (const [splitId, data] of splitMap) {
+          const { split, myParticipant, allParticipants: participants } = data;
+          const isPayer = split.paid_by === user.id;
+
+          if (isPayer) {
+            // ✅ YOU PAID - Calculate how much OTHERS owe you
+            const othersUnpaid = participants
+              .filter((p: any) => p.user_id !== user.id)
+              .reduce((sum: number, p: any) => {
+                const unpaid = parseFloat(p.total_amount) - parseFloat(p.amount_paid);
+                return sum + unpaid;
+              }, 0);
+
+            owed += othersUnpaid;
+
+            // ✅ ONLY SHOW IN HISTORY IF OTHERS STILL OWE YOU
+            if (othersUnpaid > 0) {
+              splitList.push({ ...split, my_participant: myParticipant });
+            }
+          } else {
+            // ✅ SOMEONE ELSE PAID - Calculate how much YOU owe
+            const yourUnpaid =
+              parseFloat(myParticipant.total_amount) - parseFloat(myParticipant.amount_paid);
+            owe += yourUnpaid;
+
+            // ✅ ONLY SHOW IN HISTORY IF YOU STILL OWE
+            if (yourUnpaid > 0) {
+              splitList.push({ ...split, my_participant: myParticipant });
+            }
+          }
         }
       }
+
+      // ✅ CALCULATE CASH DEBT BALANCES
+      if (cashDebts) {
+        for (const debt of cashDebts) {
+          if (debt.from_user === user.id) {
+            owe += parseFloat(debt.amount);
+          } else {
+            owed += parseFloat(debt.amount);
+          }
+        }
+      }
+
+      // ✅ CALCULATE GROUP RECEIPT BALANCES
+      try {
+        // Get groups user is in
+        const { data: membershipData } = await supabase
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', user.id);
+
+        const groupIds = (membershipData ?? []).map((m: any) => m.group_id);
+
+        if (groupIds.length > 0) {
+          // Get pending group receipts with item claims
+          const { data: groupReceipts } = await supabase
+            .from('group_receipts')
+            .select(
+              `
+            id,
+            paid_by,
+            total_amount,
+            group_receipt_items (
+              price,
+              quantity,
+              item_claims (user_id)
+            )
+          `
+            )
+            .in('group_id', groupIds)
+            .eq('status', 'pending');
+
+          // Get settled group settlements to avoid double counting
+          const { data: paidSettlements } = await supabase
+            .from('group_settlements')
+            .select('receipt_id, payer_id, payee_id, amount')
+            .eq('status', 'paid')
+            .or(`payer_id.eq.${user.id},payee_id.eq.${user.id}`);
+
+          const settledMap = new Map<string, Set<string>>();
+          for (const s of paidSettlements ?? []) {
+            if (!settledMap.has(s.receipt_id)) {
+              settledMap.set(s.receipt_id, new Set());
+            }
+            settledMap.get(s.receipt_id)!.add(s.payer_id);
+          }
+
+          for (const receipt of groupReceipts ?? []) {
+            if (receipt.paid_by === user.id) {
+              // User paid the bill — others owe them
+              for (const item of receipt.group_receipt_items ?? []) {
+                const itemTotal = item.price * (item.quantity ?? 1);
+                const claimers: string[] = (item.item_claims ?? []).map((c: any) => c.user_id);
+                const claimerCount = Math.max(claimers.length, 1);
+                for (const claimer of claimers) {
+                  if (claimer !== user.id) {
+                    const settled = settledMap.get(receipt.id)?.has(claimer) ?? false;
+                    if (!settled) {
+                      owed += itemTotal / claimerCount;
+                    }
+                  }
+                }
+              }
+            } else {
+              // Someone else paid — check if user claimed items and hasn't settled
+              const userSettled = settledMap.get(receipt.id)?.has(user.id) ?? false;
+              if (!userSettled) {
+                for (const item of receipt.group_receipt_items ?? []) {
+                  const itemTotal = item.price * (item.quantity ?? 1);
+                  const claimers: string[] = (item.item_claims ?? []).map((c: any) => c.user_id);
+                  const userClaimed = claimers.includes(user.id);
+                  if (userClaimed) {
+                    const claimerCount = Math.max(claimers.length, 1);
+                    owe += itemTotal / claimerCount;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (groupErr) {
+        console.warn('⚠️ [Home] Could not calculate group receipt balances:', groupErr);
+      }
+
+      console.log('📊 [Home] Total owed to you:', owed);
+      console.log('📊 [Home] Total you owe:', owe);
+      console.log('📊 [Home] Splits to show:', splitList);
+
+      setSplits(splitList);
+      setTotalOwed(owed);
+      setTotalOwe(owe);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    console.log('📊 [Home] Total owed to you:', owed);
-    console.log('📊 [Home] Total you owe:', owe);
-    console.log('📊 [Home] Splits to show:', splitList);
-
-    setSplits(splitList);
-    setTotalOwed(owed);
-    setTotalOwe(owe);
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-}, [user]);
+  }, [user]);
 
   useEffect(() => {
     fetchSplits();
@@ -157,6 +239,12 @@ export default function HomeScreen({ navigation }: Props) {
     const subscription = supabase
       .channel('splits_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'splits' }, () => {
+        fetchSplits();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'item_claims' }, () => {
+        fetchSplits();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_settlements' }, () => {
         fetchSplits();
       })
       .subscribe();
@@ -184,30 +272,30 @@ export default function HomeScreen({ navigation }: Props) {
           <Text style={dynStyles.headerTagline}>{t('home.tagline')}</Text>
         </View>
         <View style={dynStyles.headerButtons}>
-            <Switch
-              value={isDark}
-              onValueChange={toggleTheme}
-              trackColor={{ false: 'rgba(255,255,255,0.3)', true: theme.colors.accent }}
-              thumbColor="#FFFFFF"
-              style={{ marginRight: 4 }}
-            />
-            <TouchableOpacity
-              style={dynStyles.headerIconButton}
-              onPress={() => {
-                navigation.navigate('ReceiptScanner');
-              }}
-            >
-              <Ionicons name="camera" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                navigation.navigate('NewSplit');
-              }}
-              style={dynStyles.newSplitBtn}
-            >
-              <Ionicons name="add" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
+          <Switch
+            value={isDark}
+            onValueChange={toggleTheme}
+            trackColor={{ false: 'rgba(255,255,255,0.3)', true: theme.colors.accent }}
+            thumbColor="#FFFFFF"
+            style={{ marginRight: 4 }}
+          />
+          <TouchableOpacity
+            style={dynStyles.headerIconButton}
+            onPress={() => {
+              navigation.navigate('ReceiptScanner');
+            }}
+          >
+            <Ionicons name="camera" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              navigation.navigate('NewSplit');
+            }}
+            style={dynStyles.newSplitBtn}
+          >
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList

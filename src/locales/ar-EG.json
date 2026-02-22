@@ -302,6 +302,7 @@
     "each_selects": "كل واحد يختار",
     "claimed_by": "اختارها",
     "you_owe": "عليك",
+    "owed_to_you": "مستحق ليك",
     "mark_as_paid": "حدد كمدفوع",
     "payment_marked": "اتحدد كمتدفع!",
     "shared_item": "مشترك",
@@ -312,7 +313,6 @@
     "items_count": "{{count}} أصناف"
   },
   "debt": {
-    "cash_debt": "نقدي/دين",
     "cash_loan": "قرض نقدي",
     "cash_transaction": "معاملة نقدية",
     "quick_split": "قسم الفاتورة",

@@ -135,21 +135,17 @@ export default function GroupChatScreen({ navigation, route }: Props) {
   };
 
   const handleUploadReceipt = () => {
-    Alert.alert(
-      t('groups.upload_receipt'),
-      t('split.scan_receipt_choose'),
-      [
-        {
-          text: t('split.take_photo'),
-          onPress: () => captureAndAnalyzeReceipt('camera'),
-        },
-        {
-          text: t('split.choose_from_gallery'),
-          onPress: () => captureAndAnalyzeReceipt('gallery'),
-        },
-        { text: t('common.cancel'), style: 'cancel' },
-      ]
-    );
+    Alert.alert(t('groups.upload_receipt'), t('split.scan_receipt_choose'), [
+      {
+        text: t('split.take_photo'),
+        onPress: () => captureAndAnalyzeReceipt('camera'),
+      },
+      {
+        text: t('split.choose_from_gallery'),
+        onPress: () => captureAndAnalyzeReceipt('gallery'),
+      },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
   };
 
   const captureAndAnalyzeReceipt = async (source: 'camera' | 'gallery') => {
@@ -195,25 +191,46 @@ export default function GroupChatScreen({ navigation, route }: Props) {
       console.log('📸 Image selected:', result.assets[0].uri);
       setSending(true);
 
-      // Step 2: Analyze with OCR
+      // Step 2: Upload image to storage (optional – proceed even if upload fails)
+      let receiptImageUrl: string | undefined;
+      try {
+        const imageUri = result.assets[0].uri;
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        const fileName = `group-receipt-${Date.now()}.jpg`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('receipts')
+          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+        if (!uploadError && uploadData) {
+          const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(fileName);
+          receiptImageUrl = urlData.publicUrl;
+          console.log('✅ Receipt image uploaded:', receiptImageUrl);
+        } else {
+          console.warn('⚠️ Receipt image upload skipped:', uploadError?.message);
+        }
+      } catch (uploadErr) {
+        console.warn('⚠️ Receipt image upload failed:', uploadErr);
+      }
+
+      // Step 3: Analyze with OCR
       console.log('🔍 Analyzing receipt with OCR...');
       const receiptData = await analyzeReceiptWithOCRSpace(result.assets[0].uri);
-      
+
       console.log('✅ OCR completed:', {
         merchant: receiptData.merchantName,
         total: receiptData.total,
         itemCount: receiptData.items.length,
       });
 
-      // Step 3: Fetch group members
+      // Step 4: Fetch group members
       console.log('👥 Fetching group members...');
       const members = await loadGroupMembers(groupId);
-      
+
       console.log('✅ Found', members.length, 'members');
 
       setSending(false);
 
-      // Step 4: Show "Who Paid?" prompt
+      // Step 5: Show "Who Paid?" prompt
       await new Promise<void>((resolve) => {
         const buttons = members.map((member) => ({
           text: member.user_id === user.id ? `${member.name} (You)` : member.name,
@@ -224,16 +241,18 @@ export default function GroupChatScreen({ navigation, route }: Props) {
 
               // ✅ CORRECT PARAMETER ORDER!
               const receipt = await createGroupReceiptFromOCR(
-                groupId,                                      // 1️⃣ Group UUID
-                user.id,                                      // 2️⃣ Uploader UUID
-                member.user_id,                               // 3️⃣ Payer UUID ✅
-                receiptData.merchantName || 'Unknown Store',  // 4️⃣ Merchant name ✅
-                receiptData.total,                            // 5️⃣ Total amount ✅
-                receiptData.items.map((item) => ({            // 6️⃣ Items array ✅
+                groupId, // 1️⃣ Group UUID
+                user.id, // 2️⃣ Uploader UUID
+                member.user_id, // 3️⃣ Payer UUID ✅
+                receiptData.merchantName || 'Unknown Store', // 4️⃣ Merchant name ✅
+                receiptData.total, // 5️⃣ Total amount ✅
+                receiptData.items.map((item) => ({
+                  // 6️⃣ Items array ✅
                   name: item.name,
                   price: item.price,
                   quantity: item.quantity || 1,
-                }))
+                })),
+                receiptImageUrl // 7️⃣ Image URL ✅
               );
 
               console.log('✅ Receipt created:', receipt.id);
@@ -249,7 +268,7 @@ export default function GroupChatScreen({ navigation, route }: Props) {
               );
 
               console.log('✅ Receipt message sent');
-              
+
               Alert.alert(
                 t('common.success'),
                 `Receipt uploaded! ${receiptData.items.length} items found. Tap to split!`
@@ -258,10 +277,7 @@ export default function GroupChatScreen({ navigation, route }: Props) {
               resolve();
             } catch (error: any) {
               console.error('❌ Error creating receipt:', error);
-              Alert.alert(
-                t('common.error'),
-                error?.message || t('split.scan_receipt_error')
-              );
+              Alert.alert(t('common.error'), error?.message || t('split.scan_receipt_error'));
               resolve();
             } finally {
               setSending(false);
@@ -269,24 +285,17 @@ export default function GroupChatScreen({ navigation, route }: Props) {
           },
         }));
 
-        buttons.push({ 
-          text: t('common.cancel'), 
-          onPress: () => resolve(), 
-          style: 'cancel' 
+        buttons.push({
+          text: t('common.cancel'),
+          onPress: () => resolve(),
+          style: 'cancel',
         } as any);
 
-        Alert.alert(
-          t('groups.who_paid'),
-          t('groups.select_who_paid_receipt'),
-          buttons
-        );
+        Alert.alert(t('groups.who_paid'), t('groups.select_who_paid_receipt'), buttons);
       });
     } catch (error: any) {
       console.error('❌ Error uploading receipt:', error);
-      Alert.alert(
-        t('common.error'),
-        error?.message || t('split.scan_receipt_error')
-      );
+      Alert.alert(t('common.error'), error?.message || t('split.scan_receipt_error'));
     } finally {
       setSending(false);
     }
@@ -298,9 +307,17 @@ export default function GroupChatScreen({ navigation, route }: Props) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top']}
+    >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border },
+        ]}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
@@ -340,15 +357,29 @@ export default function GroupChatScreen({ navigation, route }: Props) {
       )}
 
       {/* Input */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={[styles.inputRow, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-          <TouchableOpacity style={styles.attachBtn} onPress={handleUploadReceipt} disabled={sending}>
-            <Ionicons name="receipt-outline" size={24} color={sending ? theme.colors.textSecondary : theme.colors.primary} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View
+          style={[
+            styles.inputRow,
+            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={handleUploadReceipt}
+            disabled={sending}
+          >
+            <Ionicons
+              name="receipt-outline"
+              size={24}
+              color={sending ? theme.colors.textSecondary : theme.colors.primary}
+            />
           </TouchableOpacity>
           <TextInput
-            style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
+            style={[
+              styles.input,
+              { backgroundColor: theme.colors.background, color: theme.colors.text },
+            ]}
             value={inputText}
             onChangeText={setInputText}
             placeholder={t('groups.type_message')}
@@ -357,7 +388,10 @@ export default function GroupChatScreen({ navigation, route }: Props) {
             maxLength={500}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: theme.colors.primary, opacity: inputText.trim() ? 1 : 0.5 }]}
+            style={[
+              styles.sendBtn,
+              { backgroundColor: theme.colors.primary, opacity: inputText.trim() ? 1 : 0.5 },
+            ]}
             onPress={handleSend}
             disabled={!inputText.trim() || sending}
           >
@@ -393,7 +427,13 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 18, fontWeight: '600' },
   loader: { flex: 1 },
   messageList: { paddingVertical: 12 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, paddingHorizontal: 40 },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 40,
+  },
   emptyText: { fontSize: 14, textAlign: 'center', marginTop: 12 },
   inputRow: {
     flexDirection: 'row',

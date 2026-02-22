@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,11 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../services/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../services/supabase';
-import {
-  loadGroupReceipt,
-  loadGroupMembers,
-  claimReceiptItem,
-} from '../services/groupService';
+import { loadGroupReceipt, loadGroupMembers, claimReceiptItem } from '../services/groupService';
 import type { GroupReceipt, GroupReceiptItem, GroupMember } from '../services/groupService';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -59,13 +56,9 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     // Subscribe to real-time item claims
     const subscription = supabase
       .channel(`item-claims-${receiptId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'item_claims' },
-        () => {
-          fetchReceipt();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'item_claims' }, () => {
+        fetchReceipt();
+      })
       .subscribe();
 
     return () => {
@@ -82,17 +75,12 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
       if (!prev) return prev;
       return {
         ...prev,
-        items: prev.items.map((i) =>
-          i.id === item.id ? { ...i, quantity: newQty } : i
-        ),
+        items: prev.items.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i)),
       };
     });
 
     try {
-      await supabase
-        .from('group_receipt_items')
-        .update({ quantity: newQty })
-        .eq('id', item.id);
+      await supabase.from('group_receipt_items').update({ quantity: newQty }).eq('id', item.id);
     } catch (error) {
       console.error('Error updating quantity:', error);
       Alert.alert(t('common.error'), t('common.error'));
@@ -139,7 +127,10 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     }
     return receipt.items
       .filter((item) => item.claimed_by.includes(user.id))
-      .reduce((sum, item) => sum + (item.price * item.quantity) / Math.max(item.claimed_by.length, 1), 0);
+      .reduce(
+        (sum, item) => sum + (item.price * item.quantity) / Math.max(item.claimed_by.length, 1),
+        0
+      );
   };
 
   const getMemberTotal = (memberId: string) => {
@@ -152,7 +143,10 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     }
     return receipt.items
       .filter((item) => item.claimed_by.includes(memberId))
-      .reduce((sum, item) => sum + (item.price * item.quantity) / Math.max(item.claimed_by.length, 1), 0);
+      .reduce(
+        (sum, item) => sum + (item.price * item.quantity) / Math.max(item.claimed_by.length, 1),
+        0
+      );
   };
 
   const payerId = receipt?.paid_by;
@@ -169,30 +163,35 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     .reduce((sum, m) => sum + getMemberTotal(m.user_id), 0);
 
   const handleMarkAsPaid = async () => {
-    Alert.alert(
-      t('groups.mark_as_paid'),
-      `${t('groups.you_owe')} ${myTotal().toFixed(2)} EGP?`,
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('groups.mark_as_paid'),
-          onPress: async () => {
-            try {
-              await supabase
-                .from('group_settlements')
-                .update({ status: 'paid' })
-                .eq('receipt_id', receiptId)
-                .eq('payer_id', user?.id);
-              Alert.alert(t('common.success'), t('groups.payment_marked'));
-              navigation.goBack();
-            } catch (error) {
-              console.error('Error marking as paid:', error);
-              Alert.alert(t('common.error'), t('common.error'));
-            }
-          },
+    if (!user || !receipt) return;
+    const amount = myTotal();
+    Alert.alert(t('groups.mark_as_paid'), `${t('groups.you_owe')} ${amount.toFixed(2)} EGP?`, [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('groups.mark_as_paid'),
+        onPress: async () => {
+          try {
+            await supabase.from('group_settlements').upsert(
+              {
+                group_id: groupId,
+                receipt_id: receiptId,
+                payer_id: user.id,
+                payee_id: receipt.paid_by,
+                amount,
+                status: 'paid',
+                paid_at: new Date().toISOString(),
+              },
+              { onConflict: 'receipt_id,payer_id' }
+            );
+            Alert.alert(t('common.success'), t('groups.payment_marked'));
+            navigation.goBack();
+          } catch (error) {
+            console.error('Error marking as paid:', error);
+            Alert.alert(t('common.error'), t('common.error'));
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const renderItem = ({ item }: { item: GroupReceiptItem }) => {
@@ -209,7 +208,12 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
         ]}
         onPress={() => handleToggleClaim(item)}
       >
-        <View style={[styles.checkbox, { borderColor: isClaimed ? theme.colors.primary : theme.colors.border }]}>
+        <View
+          style={[
+            styles.checkbox,
+            { borderColor: isClaimed ? theme.colors.primary : theme.colors.border },
+          ]}
+        >
           {isClaimed && <Ionicons name="checkmark" size={16} color={theme.colors.primary} />}
         </View>
         <View style={styles.itemInfo}>
@@ -272,6 +276,8 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     );
   }
 
+  const isUserPayer = user?.id === payerId;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
@@ -289,6 +295,15 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
         </View>
       </View>
 
+      {/* Receipt Image */}
+      {receipt.image_url ? (
+        <Image
+          source={{ uri: receipt.image_url }}
+          style={styles.receiptImage}
+          resizeMode="contain"
+        />
+      ) : null}
+
       {/* Payment Summary */}
       {payerName && (
         <View style={[styles.paymentSummary, { backgroundColor: theme.colors.surface }]}>
@@ -297,7 +312,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
           </Text>
           <View style={styles.paymentSummaryRow}>
             <Text style={styles.paymentSummaryPaid}>
-              ✅ {payerName} {t('groups.paid')}: {payerTotal.toFixed(2)} EGP
+              ✅ {payerName} {t('groups.paid')}: {receipt.total_amount.toFixed(2)} EGP
             </Text>
           </View>
           {overdueTotal > 0 && (
@@ -339,22 +354,45 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
       />
 
       {/* My total footer */}
-      <View style={[styles.footer, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-        <View>
-          <Text style={[styles.footerLabel, { color: theme.colors.textSecondary }]}>
-            {t('groups.you_owe')}
-          </Text>
-          <Text style={[styles.footerTotal, { color: theme.colors.primary }]}>
-            {myTotal().toFixed(2)} EGP
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.paidButton, { backgroundColor: theme.colors.primary }]}
-          onPress={handleMarkAsPaid}
-        >
-          <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={styles.paidButtonText}>{t('groups.mark_as_paid')}</Text>
-        </TouchableOpacity>
+      <View
+        style={[
+          styles.footer,
+          { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+        ]}
+      >
+        {isUserPayer ? (
+          <View>
+            <Text style={[styles.footerLabel, { color: theme.colors.textSecondary }]}>
+              {t('groups.owed_to_you')}
+            </Text>
+            <Text style={[styles.footerTotal, { color: theme.colors.success }]}>
+              +{overdueTotal.toFixed(2)} EGP
+            </Text>
+          </View>
+        ) : (
+          <View>
+            <Text style={[styles.footerLabel, { color: theme.colors.textSecondary }]}>
+              {t('groups.you_owe')}
+            </Text>
+            <Text style={[styles.footerTotal, { color: theme.colors.primary }]}>
+              {myTotal().toFixed(2)} EGP
+            </Text>
+          </View>
+        )}
+        {!isUserPayer && (
+          <TouchableOpacity
+            style={[styles.paidButton, { backgroundColor: theme.colors.primary }]}
+            onPress={handleMarkAsPaid}
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={18}
+              color="#fff"
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.paidButtonText}>{t('groups.mark_as_paid')}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -374,6 +412,11 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700' },
   headerTotal: { fontSize: 16, fontWeight: '600', marginTop: 2 },
   errorText: { textAlign: 'center', marginTop: 40, fontSize: 16 },
+  receiptImage: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#000',
+  },
   paymentSummary: {
     marginHorizontal: 16,
     marginTop: 12,
