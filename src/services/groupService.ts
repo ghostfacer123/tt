@@ -132,13 +132,15 @@ export const loadGroups = async (userId: string): Promise<Group[]> => {
 export const loadGroupMembers = async (groupId: string): Promise<GroupMember[]> => {
   const { data, error } = await supabase
     .from('group_members')
-    .select(`
+    .select(
+      `
       id,
       group_id,
       user_id,
       joined_at,
       profiles (name, email)
-    `)
+    `
+    )
     .eq('group_id', groupId);
 
   if (error) throw error;
@@ -159,7 +161,8 @@ export const loadGroupMembers = async (groupId: string): Promise<GroupMember[]> 
 export const loadGroupMessages = async (groupId: string): Promise<GroupMessage[]> => {
   const { data, error } = await supabase
     .from('group_messages')
-    .select(`
+    .select(
+      `
       id,
       group_id,
       sender_id,
@@ -168,7 +171,8 @@ export const loadGroupMessages = async (groupId: string): Promise<GroupMessage[]
       receipt_id,
       sent_at,
       profiles (name)
-    `)
+    `
+    )
     .eq('group_id', groupId)
     .is('deleted_at', null)
     .order('sent_at', { ascending: true });
@@ -238,9 +242,7 @@ export const createGroup = async (
       role: 'member',
     }));
 
-    const { error: membersError } = await supabase
-      .from('group_members')
-      .insert(memberInserts);
+    const { error: membersError } = await supabase.from('group_members').insert(memberInserts);
 
     if (membersError) {
       console.error('❌ Error adding members:', membersError);
@@ -249,9 +251,9 @@ export const createGroup = async (
     }
   }
 
-  return { 
-    ...group, 
-    member_count: memberIds.length + 1 
+  return {
+    ...group,
+    member_count: memberIds.length + 1,
   };
 };
 
@@ -261,7 +263,8 @@ export const createGroup = async (
 export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt | null> => {
   const { data, error } = await supabase
     .from('group_receipts')
-    .select(`
+    .select(
+      `
       id,
       group_id,
       uploaded_by,
@@ -279,7 +282,8 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
         quantity,
         item_claims (user_id)
       )
-    `)
+    `
+    )
     .eq('id', receiptId)
     .single();
 
@@ -318,12 +322,10 @@ export const claimReceiptItem = async (
   claim: boolean
 ): Promise<void> => {
   if (claim) {
-    const { error } = await supabase
-      .from('item_claims')
-      .insert({ 
-        receipt_item_id: itemId, 
-        user_id: userId 
-      });
+    const { error } = await supabase.from('item_claims').insert({
+      receipt_item_id: itemId,
+      user_id: userId,
+    });
     if (error) console.error('❌ Error claiming item:', error);
   } else {
     const { error } = await supabase
@@ -344,7 +346,8 @@ export const createGroupReceiptFromOCR = async (
   paidBy: string,
   merchantName: string,
   totalAmount: number,
-  items: Array<{ name: string; price: number; quantity?: number }>
+  items: Array<{ name: string; price: number; quantity?: number }>,
+  imageUrl?: string
 ): Promise<GroupReceipt> => {
   console.log('📝 Creating group receipt...');
   console.log('🔍 Parameters:', { groupId, uploadedBy, paidBy, merchantName, totalAmount });
@@ -358,7 +361,8 @@ export const createGroupReceiptFromOCR = async (
       merchant_name: merchantName,
       total_amount: totalAmount,
       subtotal: totalAmount,
-      status: 'pending',  // ✅ FIXED - changed from 'splitting' to 'pending'
+      status: 'pending', // ✅ FIXED - changed from 'splitting' to 'pending'
+      receipt_image_url: imageUrl ?? null,
     })
     .select()
     .single();
@@ -403,10 +407,10 @@ export const createGroupReceiptFromOCR = async (
     };
   }
 
-  return { 
-    ...receipt, 
+  return {
+    ...receipt,
     image_url: receipt.receipt_image_url,
-    items: [] 
+    items: [],
   };
 };
 
@@ -416,9 +420,9 @@ export const createGroupReceiptFromOCR = async (
 export const markSettlementAsPaid = async (settlementId: string): Promise<void> => {
   const { error } = await supabase
     .from('group_settlements')
-    .update({ 
+    .update({
       status: 'paid',
-      paid_at: new Date().toISOString()
+      paid_at: new Date().toISOString(),
     })
     .eq('id', settlementId);
 

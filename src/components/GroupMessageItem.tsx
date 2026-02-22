@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
@@ -16,6 +16,7 @@ interface ReceiptStats {
   payerName: string;
   paidAmount: number;
   overdueAmount: number;
+  imageUrl?: string;
 }
 
 export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
@@ -34,14 +35,17 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
       try {
         const { data } = await supabase
           .from('group_receipts')
-          .select(`
+          .select(
+            `
             paid_by,
+            receipt_image_url,
             group_receipt_items (
               price,
               quantity,
               item_claims (user_id)
             )
-          `)
+          `
+          )
           .eq('id', message.receipt_id!)
           .single();
 
@@ -53,7 +57,9 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
 
         for (const item of data.group_receipt_items ?? []) {
           const itemTotal = item.price * (item.quantity ?? 1);
-          const claimers: string[] = (item.item_claims ?? []).map((c: { user_id: string }) => c.user_id);
+          const claimers: string[] = (item.item_claims ?? []).map(
+            (c: { user_id: string }) => c.user_id
+          );
           const claimerCount = Math.max(claimers.length, 1);
           const sharePerPerson = itemTotal / claimerCount;
 
@@ -76,7 +82,12 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
           payerName = profile?.name ?? '';
         }
 
-        setReceiptStats({ payerName, paidAmount, overdueAmount });
+        setReceiptStats({
+          payerName,
+          paidAmount,
+          overdueAmount,
+          imageUrl: data.receipt_image_url ?? undefined,
+        });
       } catch {
         // ignore fetch errors for stats
       }
@@ -100,6 +111,13 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
           <View style={styles.receiptIcon}>
             <Ionicons name="receipt-outline" size={28} color="#fff" />
           </View>
+          {receiptStats?.imageUrl ? (
+            <Image
+              source={{ uri: receiptStats.imageUrl }}
+              style={styles.receiptThumbnail}
+              resizeMode="cover"
+            />
+          ) : null}
           <Text style={styles.receiptTitle}>{message.content}</Text>
           {receiptStats && (
             <View style={styles.receiptStats}>
@@ -107,7 +125,9 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
                 <View style={styles.receiptStatRow}>
                   <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
                   <Text style={styles.receiptStatPaid}>
-                    {' '}{receiptStats.payerName} {t('groups.paid')}: {receiptStats.paidAmount.toFixed(2)} EGP
+                    {' '}
+                    {receiptStats.payerName} {t('groups.paid')}:{' '}
+                    {receiptStats.paidAmount.toFixed(2)} EGP
                   </Text>
                 </View>
               ) : null}
@@ -115,7 +135,8 @@ export const GroupMessageItem: React.FC<GroupMessageItemProps> = ({
                 <View style={styles.receiptStatRow}>
                   <Ionicons name="time" size={14} color="#FF5252" />
                   <Text style={styles.receiptStatOverdue}>
-                    {' '}{t('groups.overdue')}: {receiptStats.overdueAmount.toFixed(2)} EGP
+                    {' '}
+                    {t('groups.overdue')}: {receiptStats.overdueAmount.toFixed(2)} EGP
                   </Text>
                 </View>
               )}
@@ -200,6 +221,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   receiptIcon: { marginBottom: 8 },
+  receiptThumbnail: {
+    width: 200,
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
   receiptTitle: { color: '#fff', fontSize: 15, fontWeight: '600', textAlign: 'center' },
   receiptStats: { marginTop: 8, marginBottom: 4, alignSelf: 'stretch' },
   receiptStatRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 2 },
