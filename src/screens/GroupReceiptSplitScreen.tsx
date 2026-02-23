@@ -74,12 +74,12 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
       setMembers(memberData);
 
       if (data) {
-        setHasService(!!(data as any).has_service);
-        setHasTax(!!(data as any).has_tax);
-        setHasDelivery(!!(data as any).has_delivery);
-        if ((data as any).service_percentage) setServicePercent(String((data as any).service_percentage));
-        if ((data as any).tax_percentage) setTaxPercent(String((data as any).tax_percentage));
-        if ((data as any).delivery_fee) setDeliveryFee(String((data as any).delivery_fee));
+        setHasService(!!data.has_service);
+        setHasTax(!!data.has_tax);
+        setHasDelivery(!!data.has_delivery);
+        if (data.service_percentage) setServicePercent(String(data.service_percentage));
+        if (data.tax_percentage) setTaxPercent(String(data.tax_percentage));
+        if (data.delivery_fee) setDeliveryFee(String(data.delivery_fee));
       }
     } catch (error) {
       console.error('Error loading receipt:', error);
@@ -261,7 +261,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     if (!user || !receipt) return;
 
     if (userSubtotal === 0) {
-      Alert.alert(t('common.error'), t('groups.claim_items_first'));
+      Alert.alert(t('common.error'), t('groups.select_items'));
       return;
     }
 

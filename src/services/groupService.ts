@@ -37,9 +37,19 @@ export interface GroupReceipt {
   image_url?: string;
   merchant_name: string;
   total_amount: number;
-  status: 'pending' | 'settled' | 'cancelled' | 'archived'; // ✅ FIXED - removed 'splitting'
+  status: 'pending' | 'settled' | 'cancelled' | 'archived';
   created_at: string;
   items: GroupReceiptItem[];
+  // Optional OCR-parsed fields saved to DB
+  subtotal?: number;
+  has_service?: boolean;
+  service_percentage?: number;
+  service_amount?: number;
+  has_tax?: boolean;
+  tax_percentage?: number;
+  tax_amount?: number;
+  has_delivery?: boolean;
+  delivery_fee?: number;
 }
 
 export interface GroupReceiptItem {
@@ -311,7 +321,6 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
     total_amount: data.total_amount,
     status: data.status,
     created_at: data.created_at,
-    // Extra fields accessed via (receipt as any) in screens
     subtotal: data.subtotal ?? data.total_amount,
     has_service: data.has_service ?? false,
     service_percentage: data.service_percentage ?? 0,
@@ -329,7 +338,7 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
       quantity: item.quantity ?? 1,
       claimed_by: (item.item_claims ?? []).map((c: any) => c.user_id),
     })),
-  } as any;
+  };
 };
 
 // ============================================
@@ -374,7 +383,7 @@ export const createGroupReceiptFromOCR = async (
   console.log('📝 Creating group receipt...');
   console.log('🔍 Parameters:', { groupId, uploadedBy, paidBy, merchantName, totalAmount });
 
-  const sub = subtotal ?? totalAmount;
+  const finalSubtotal = subtotal ?? totalAmount;
   const hasTax = !!taxAmount && taxAmount > 0;
   const hasService = !!serviceCharge && serviceCharge > 0;
 
@@ -386,13 +395,13 @@ export const createGroupReceiptFromOCR = async (
       paid_by: paidBy,
       merchant_name: merchantName,
       total_amount: totalAmount,
-      subtotal: sub,
+      subtotal: finalSubtotal,
       has_tax: hasTax,
       tax_amount: taxAmount ?? 0,
-      tax_percentage: hasTax && sub > 0 ? Math.round((taxAmount! / sub) * 100) : 0,
+      tax_percentage: hasTax && finalSubtotal > 0 ? Math.round((taxAmount! / finalSubtotal) * 100) : 0,
       has_service: hasService,
       service_amount: serviceCharge ?? 0,
-      service_percentage: hasService && sub > 0 ? Math.round((serviceCharge! / sub) * 100) : 0,
+      service_percentage: hasService && finalSubtotal > 0 ? Math.round((serviceCharge! / finalSubtotal) * 100) : 0,
       status: 'pending',
       receipt_image_url: imageUrl ?? null,
     })
