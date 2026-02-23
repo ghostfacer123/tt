@@ -335,7 +335,15 @@
     "member_not_found": "User not found",
     "already_member": "Already a member",
     "you_owe_total": "You Owe",
-    "view_receipt": "View Receipt"
+    "view_receipt": "View Receipt",
+    "cannot_remove_creator": "Cannot remove yourself as creator",
+    "receipt_archived": "Receipt archived",
+    "tap_to_fullscreen": "Tap to view full screen",
+    "archived": "Archived",
+    "your_summary": "Your Summary",
+    "subtotal": "Subtotal",
+    "delivery_share": "Delivery share",
+    "your_total": "Your Total"
   },
   "debt": {
     "cash_debt": "Cash/Debt",

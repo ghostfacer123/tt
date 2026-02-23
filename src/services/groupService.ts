@@ -434,7 +434,7 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
 
 // Delete receipt
 export const deleteGroupReceipt = async (receiptId: string): Promise<void> => {
-  // Mark all settlements as cancelled
+  // Mark all settlements as paid/settled before deleting the receipt
   await supabase.from('group_settlements').update({ status: 'paid' }).eq('receipt_id', receiptId);
   const { error } = await supabase.from('group_receipts').delete().eq('id', receiptId);
   if (error) throw error;

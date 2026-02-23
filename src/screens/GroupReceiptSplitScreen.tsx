@@ -193,7 +193,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     if (!user || !receipt) return;
 
     if (userSubtotal === 0) {
-      Alert.alert(t('common.error'), 'Please claim at least one item before marking as paid.');
+      Alert.alert(t('common.error'), t('common.error'));
       return;
     }
 
@@ -248,7 +248,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
         onPress: async () => {
           try {
             await archiveGroupReceipt(receiptId);
-            Alert.alert(t('common.success'), 'Receipt archived');
+            Alert.alert(t('common.success'), t('groups.receipt_archived'));
             navigation.goBack();
           } catch (error) {
             Alert.alert(t('common.error'), t('common.error'));
@@ -394,7 +394,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
             />
             <View style={styles.imageTapHint}>
               <Ionicons name="expand-outline" size={16} color="#fff" />
-              <Text style={styles.imageTapHintText}>Tap to view full screen</Text>
+              <Text style={styles.imageTapHintText}>{ t('groups.tap_to_fullscreen') }</Text>
             </View>
           </TouchableOpacity>
         ) : null}
@@ -412,7 +412,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
           )}
           {receipt.status === 'archived' && (
             <View style={styles.archivedBadge}>
-              <Text style={styles.archivedBadgeText}>✓ Archived</Text>
+              <Text style={styles.archivedBadgeText}>✓ {t('groups.archived')}</Text>
             </View>
           )}
         </View>
@@ -511,31 +511,31 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
         {/* Calculation Summary (for non-payers) */}
         {!isUserPayer && userSubtotal > 0 && (
           <View style={[styles.summaryCard, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.summaryTitle, { color: theme.colors.text }]}>Your Summary</Text>
+            <Text style={[styles.summaryTitle, { color: theme.colors.text }]}>{ t('groups.your_summary') }</Text>
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Subtotal</Text>
+              <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{ t('groups.subtotal') }</Text>
               <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{userSubtotal.toFixed(2)} EGP</Text>
             </View>
             {hasService && (
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Service ({servicePct}%)</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{t('split.service_charge')} ({servicePct}%)</Text>
                 <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{userServiceShare.toFixed(2)} EGP</Text>
               </View>
             )}
             {hasTax && (
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Tax ({taxPct}%)</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{t('split.tax')} ({taxPct}%)</Text>
                 <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{userTaxShare.toFixed(2)} EGP</Text>
               </View>
             )}
             {hasDelivery && (
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>Delivery share</Text>
+                <Text style={[styles.summaryLabel, { color: theme.colors.textSecondary }]}>{ t('groups.delivery_share') }</Text>
                 <Text style={[styles.summaryValue, { color: theme.colors.text }]}>{userDeliveryShare.toFixed(2)} EGP</Text>
               </View>
             )}
             <View style={[styles.summaryRow, styles.summaryTotalRow]}>
-              <Text style={[styles.summaryTotalLabel, { color: theme.colors.text }]}>Your Total</Text>
+              <Text style={[styles.summaryTotalLabel, { color: theme.colors.text }]}>{ t('groups.your_total') }</Text>
               <Text style={[styles.summaryTotalValue, { color: theme.colors.primary }]}>{userTotal.toFixed(2)} EGP</Text>
             </View>
           </View>

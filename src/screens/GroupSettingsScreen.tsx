@@ -113,7 +113,7 @@ export default function GroupSettingsScreen({ navigation, route }: Props) {
   const handleRemoveMember = (member: GroupMember) => {
     if (!isCreator) return;
     if (member.user_id === user?.id) {
-      Alert.alert(t('common.error'), 'Cannot remove yourself as creator');
+      Alert.alert(t('common.error'), t('groups.cannot_remove_creator'));
       return;
     }
     Alert.alert(t('groups.remove_member'), t('groups.remove_member_confirm'), [

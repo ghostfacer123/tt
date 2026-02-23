@@ -335,7 +335,15 @@
     "member_not_found": "المستخدم مش موجود",
     "already_member": "بالفعل عضو",
     "you_owe_total": "عليك",
-    "view_receipt": "شوف الفاتورة"
+    "view_receipt": "شوف الفاتورة",
+    "cannot_remove_creator": "مش تقدر تشيل نفسك وأنت المنشئ",
+    "receipt_archived": "الفاتورة اتأرشفت",
+    "tap_to_fullscreen": "اضغط للعرض الكامل",
+    "archived": "مؤرشف",
+    "your_summary": "ملخصك",
+    "subtotal": "المجموع الفرعي",
+    "delivery_share": "نصيبك من التوصيل",
+    "your_total": "مجموعك"
   },
   "debt": {
     "cash_loan": "قرض نقدي",
