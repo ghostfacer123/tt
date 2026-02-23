@@ -327,6 +327,12 @@ export default function GroupChatScreen({ navigation, route }: Props) {
         <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
           {groupName}
         </Text>
+        <TouchableOpacity
+          style={styles.settingsBtn}
+          onPress={() => navigation.navigate('GroupSettings', { groupId, groupName })}
+        >
+          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
 
       {/* Messages */}
@@ -425,6 +431,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerTitle: { flex: 1, fontSize: 18, fontWeight: '600' },
+  settingsBtn: { padding: 4, marginLeft: 4 },
   loader: { flex: 1 },
   messageList: { paddingVertical: 12 },
   empty: {

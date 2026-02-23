@@ -74,7 +74,8 @@
     "new_split": "حساب جديد",
     "no_splits": "مفيش حسابات لسه",
     "no_splits_desc": "ابدأ حساب جديد مع صحابك!",
-    "pull_to_refresh": "اسحب للتحديث"
+    "pull_to_refresh": "اسحب للتحديث",
+    "tap_for_breakdown": "اضغط للتفاصيل"
   },
   "split": {
     "new_split": "حساب جديد",
@@ -310,7 +311,31 @@
     "no_messages": "مفيش رسائل. ابدأ الكلام!",
     "type_message": "اكتب رسالة...",
     "receipt_not_found": "الفاتورة مش موجودة",
-    "items_count": "{{count}} أصناف"
+    "items_count": "{{count}} أصناف",
+    "add_member": "ضيف عضو",
+    "remove_member": "شيل عضو",
+    "leave_group": "اطلع من الشلة",
+    "delete_group": "امسح الشلة",
+    "group_settings": "إعدادات الشلة",
+    "archived_receipts": "الفواتير المؤرشفة",
+    "no_archived": "مفيش فواتير مؤرشفة",
+    "archive_receipt": "أرشف الفاتورة",
+    "delete_receipt": "امسح الفاتورة",
+    "delete_receipt_confirm": "مسح الفاتورة دي؟ هيتم تسوية كل الحسابات.",
+    "delete_group_confirm": "مسح الشلة دي؟ مش هترجع.",
+    "delete_group_unpaid_warning": "في حسابات غير مدفوعة. متأكد عايز تمسح؟",
+    "leave_group_confirm": "هتطلع من الشلة؟",
+    "remove_member_confirm": "هتشيل العضو ده من الشلة؟",
+    "payment_status": "حالة الدفع",
+    "total_collected": "إجمالي المحصّل",
+    "pending_payment": "في الانتظار",
+    "creator": "المنشئ",
+    "add_member_by_email": "ضيف بالإيميل أو الموبايل",
+    "member_added": "العضو اتضاف!",
+    "member_not_found": "المستخدم مش موجود",
+    "already_member": "بالفعل عضو",
+    "you_owe_total": "عليك",
+    "view_receipt": "شوف الفاتورة"
   },
   "debt": {
     "cash_loan": "قرض نقدي",

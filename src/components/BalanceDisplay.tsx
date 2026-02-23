@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -12,9 +12,10 @@ interface Props {
   totalOwe: number;
   currency: Currency;
   language: Language;
+  onOwePress?: () => void;
 }
 
-export default function BalanceDisplay({ totalOwed, totalOwe, currency, language }: Props) {
+export default function BalanceDisplay({ totalOwed, totalOwe, currency, language, onOwePress }: Props) {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const net = totalOwed - totalOwe;
@@ -42,12 +43,17 @@ export default function BalanceDisplay({ totalOwed, totalOwe, currency, language
           </Text>
         </View>
         <View style={styles.divider} />
-        <View style={styles.breakdownItem}>
+        <TouchableOpacity style={styles.breakdownItem} onPress={onOwePress} disabled={!onOwePress}>
           <Text style={styles.breakdownLabel}>{t('home.you_owe')}</Text>
           <Text style={[styles.breakdownAmount, { color: theme.colors.warning }]}>
             {formatCurrency(totalOwe, currency, language)}
           </Text>
-        </View>
+          {onOwePress && (
+            <Text style={[styles.tapHint, { color: theme.colors.textSecondary }]}>
+              {t('home.tap_for_breakdown')}
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -88,5 +94,6 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   breakdownItem: { flex: 1, alignItems: 'center' },
   breakdownLabel: { fontSize: 11, color: theme.colors.textSecondary, marginBottom: 2 },
   breakdownAmount: { fontSize: 14, fontWeight: '700' },
+  tapHint: { fontSize: 10, marginTop: 2 },
   divider: { width: 1, height: 30, backgroundColor: theme.colors.border },
 });

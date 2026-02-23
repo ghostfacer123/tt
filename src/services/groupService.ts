@@ -37,7 +37,7 @@ export interface GroupReceipt {
   image_url?: string;
   merchant_name: string;
   total_amount: number;
-  status: 'pending' | 'settled' | 'cancelled'; // ✅ FIXED - removed 'splitting'
+  status: 'pending' | 'settled' | 'cancelled' | 'archived'; // ✅ FIXED - removed 'splitting'
   created_at: string;
   items: GroupReceiptItem[];
 }
@@ -412,6 +412,171 @@ export const createGroupReceiptFromOCR = async (
     image_url: receipt.receipt_image_url,
     items: [],
   };
+};
+
+// Add member to group
+export const addGroupMember = async (groupId: string, userId: string): Promise<void> => {
+  const { error } = await supabase.from('group_members').insert({ group_id: groupId, user_id: userId });
+  if (error) throw error;
+};
+
+// Remove member from group
+export const removeGroupMember = async (groupId: string, userId: string): Promise<void> => {
+  const { error } = await supabase.from('group_members').delete().eq('group_id', groupId).eq('user_id', userId);
+  if (error) throw error;
+};
+
+// Delete group (only creator)
+export const deleteGroup = async (groupId: string): Promise<void> => {
+  const { error } = await supabase.from('groups').delete().eq('id', groupId);
+  if (error) throw error;
+};
+
+// Delete receipt
+export const deleteGroupReceipt = async (receiptId: string): Promise<void> => {
+  // Mark all settlements as cancelled
+  await supabase.from('group_settlements').update({ status: 'paid' }).eq('receipt_id', receiptId);
+  const { error } = await supabase.from('group_receipts').delete().eq('id', receiptId);
+  if (error) throw error;
+};
+
+// Archive receipt manually
+export const archiveGroupReceipt = async (receiptId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('group_receipts')
+    .update({ status: 'archived', settled_at: new Date().toISOString() })
+    .eq('id', receiptId);
+  if (error) throw error;
+};
+
+// Check if all settlements are paid and auto-archive
+export const checkAndAutoArchive = async (receiptId: string): Promise<boolean> => {
+  const { data: settlements } = await supabase
+    .from('group_settlements')
+    .select('status')
+    .eq('receipt_id', receiptId);
+
+  if (!settlements || settlements.length === 0) return false;
+  const allPaid = settlements.every((s: any) => s.status === 'paid');
+
+  if (allPaid) {
+    await supabase
+      .from('group_receipts')
+      .update({ status: 'archived', settled_at: new Date().toISOString() })
+      .eq('id', receiptId);
+  }
+  return allPaid;
+};
+
+// Load archived receipts for a group
+export const loadArchivedReceipts = async (groupId: string): Promise<GroupReceipt[]> => {
+  const { data, error } = await supabase
+    .from('group_receipts')
+    .select(`
+      id, group_id, uploaded_by, paid_by, receipt_image_url,
+      merchant_name, total_amount, status, created_at,
+      group_receipt_items (id, receipt_id, name, price, quantity, item_claims (user_id))
+    `)
+    .eq('group_id', groupId)
+    .eq('status', 'archived')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((d: any) => ({
+    id: d.id,
+    group_id: d.group_id,
+    uploaded_by: d.uploaded_by,
+    paid_by: d.paid_by ?? undefined,
+    image_url: d.receipt_image_url,
+    merchant_name: d.merchant_name || 'Unknown',
+    total_amount: d.total_amount,
+    status: d.status,
+    created_at: d.created_at,
+    items: (d.group_receipt_items ?? []).map((item: any) => ({
+      id: item.id,
+      receipt_id: item.receipt_id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity ?? 1,
+      claimed_by: (item.item_claims ?? []).map((c: any) => c.user_id),
+    })),
+  }));
+};
+
+// Load group settlements (for balance breakdown)
+export interface BalanceItem {
+  settlementId: string;
+  receiptId: string;
+  groupId: string;
+  groupName: string;
+  merchantName: string;
+  receiptDate: string;
+  itemNames: string[];
+  totalAmount: number;
+  toUserId: string;
+  toUserName: string;
+  status: 'pending' | 'paid';
+}
+
+export const loadMyPendingSettlements = async (userId: string): Promise<BalanceItem[]> => {
+  // Get all pending settlements where this user owes money
+  const { data: settlements, error } = await supabase
+    .from('group_settlements')
+    .select('id, receipt_id, group_id, from_user, to_user, total_amount, amount, status')
+    .or(`from_user.eq.${userId},payer_id.eq.${userId}`)
+    .neq('status', 'paid');
+
+  if (error) {
+    console.error('Error loading settlements:', error);
+    return [];
+  }
+
+  const result: BalanceItem[] = [];
+  for (const settlement of settlements ?? []) {
+    // Get receipt info
+    const { data: receipt } = await supabase
+      .from('group_receipts')
+      .select('merchant_name, created_at, group_id, group_receipt_items(name, item_claims(user_id))')
+      .eq('id', settlement.receipt_id)
+      .single();
+
+    if (!receipt) continue;
+
+    // Get group name
+    const { data: group } = await supabase
+      .from('groups')
+      .select('name')
+      .eq('id', settlement.group_id ?? receipt.group_id)
+      .single();
+
+    // Get payer name
+    const payeeId = settlement.to_user ?? (settlement as any).payee_id;
+    const { data: payeeProfile } = payeeId
+      ? await supabase.from('profiles').select('name').eq('id', payeeId).single()
+      : { data: null };
+
+    // Get user's claimed item names
+    const itemNames = (receipt.group_receipt_items ?? [])
+      .filter((item: any) => (item.item_claims ?? []).some((c: any) => c.user_id === userId))
+      .map((item: any) => item.name);
+
+    result.push({
+      settlementId: settlement.id,
+      receiptId: settlement.receipt_id,
+      groupId: settlement.group_id ?? receipt.group_id,
+      groupName: group?.name ?? 'Group',
+      merchantName: receipt.merchant_name ?? 'Unknown',
+      receiptDate: receipt.created_at,
+      itemNames,
+      totalAmount: settlement.total_amount ?? settlement.amount ?? 0,
+      toUserId: payeeId ?? '',
+      toUserName: payeeProfile?.name ?? 'Unknown',
+      status: settlement.status,
+    });
+  }
+
+  return result;
 };
 
 // ============================================
