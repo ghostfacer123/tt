@@ -171,16 +171,17 @@ export default function HomeScreen({ navigation }: Props) {
           // Get settled group settlements to avoid double counting
           const { data: paidSettlements } = await supabase
             .from('group_settlements')
-            .select('receipt_id, payer_id, payee_id, amount')
+            .select('receipt_id, from_user, payer_id, amount')
             .eq('status', 'paid')
-            .or(`payer_id.eq.${user.id},payee_id.eq.${user.id}`);
+            .or(`from_user.eq.${user.id},payer_id.eq.${user.id},to_user.eq.${user.id},payee_id.eq.${user.id}`);
 
           const settledMap = new Map<string, Set<string>>();
           for (const s of paidSettlements ?? []) {
             if (!settledMap.has(s.receipt_id)) {
               settledMap.set(s.receipt_id, new Set());
             }
-            settledMap.get(s.receipt_id)!.add(s.payer_id);
+            const settler = s.from_user ?? s.payer_id;
+            if (settler) settledMap.get(s.receipt_id)!.add(settler);
           }
 
           for (const receipt of groupReceipts ?? []) {

@@ -44,18 +44,28 @@ export const analyzeReceiptWithMindee = async (imageUri: string): Promise<Receip
       })).filter((li: ReceiptItem) => li.name && li.price > 0);
 
       const total = pred.total_amount?.value ?? 0;
-      const taxAmount = pred.taxes?.[0]?.value ?? 0;
+
+      // Separate tax and service charges from taxes array
+      const taxes: Array<{ value?: number; rate?: number; code?: string }> = pred.taxes ?? [];
+      const serviceCharge = taxes
+        .filter((t) => /service|srv|sc/i.test(t.code ?? ''))
+        .reduce((sum, t) => sum + (t.value ?? 0), 0);
+      const taxAmount = taxes
+        .filter((t) => !/service|srv|sc/i.test(t.code ?? ''))
+        .reduce((sum, t) => sum + (t.value ?? 0), 0) || (pred.total_tax?.value ?? 0);
+
+      const subtotal = pred.total_net?.value ?? (total - taxAmount - serviceCharge);
 
       return {
         merchantName: pred.supplier_name?.value ?? 'Unknown Merchant',
         total,
         taxAmount,
-        serviceCharge: 0,
+        serviceCharge,
         date: pred.date?.value ?? new Date().toISOString().split('T')[0],
-        subtotal: total,
+        subtotal,
         discount: 0,
         deliveryFee: 0,
-        serviceFee: 0,
+        serviceFee: serviceCharge,
         items: rawItems,
       };
     } catch (err) {

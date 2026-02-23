@@ -272,6 +272,15 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
       receipt_image_url,
       merchant_name,
       total_amount,
+      subtotal,
+      has_service,
+      service_percentage,
+      service_amount,
+      has_tax,
+      tax_percentage,
+      tax_amount,
+      has_delivery,
+      delivery_fee,
       status,
       created_at,
       group_receipt_items (
@@ -302,6 +311,16 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
     total_amount: data.total_amount,
     status: data.status,
     created_at: data.created_at,
+    // Extra fields accessed via (receipt as any) in screens
+    subtotal: data.subtotal ?? data.total_amount,
+    has_service: data.has_service ?? false,
+    service_percentage: data.service_percentage ?? 0,
+    service_amount: data.service_amount ?? 0,
+    has_tax: data.has_tax ?? false,
+    tax_percentage: data.tax_percentage ?? 0,
+    tax_amount: data.tax_amount ?? 0,
+    has_delivery: data.has_delivery ?? false,
+    delivery_fee: data.delivery_fee ?? 0,
     items: (data.group_receipt_items ?? []).map((item: any) => ({
       id: item.id,
       receipt_id: item.receipt_id,
@@ -310,7 +329,7 @@ export const loadGroupReceipt = async (receiptId: string): Promise<GroupReceipt 
       quantity: item.quantity ?? 1,
       claimed_by: (item.item_claims ?? []).map((c: any) => c.user_id),
     })),
-  };
+  } as any;
 };
 
 // ============================================
@@ -347,10 +366,17 @@ export const createGroupReceiptFromOCR = async (
   merchantName: string,
   totalAmount: number,
   items: Array<{ name: string; price: number; quantity?: number }>,
-  imageUrl?: string
+  imageUrl?: string,
+  subtotal?: number,
+  taxAmount?: number,
+  serviceCharge?: number
 ): Promise<GroupReceipt> => {
   console.log('📝 Creating group receipt...');
   console.log('🔍 Parameters:', { groupId, uploadedBy, paidBy, merchantName, totalAmount });
+
+  const sub = subtotal ?? totalAmount;
+  const hasTax = !!taxAmount && taxAmount > 0;
+  const hasService = !!serviceCharge && serviceCharge > 0;
 
   const { data: receipt, error: receiptError } = await supabase
     .from('group_receipts')
@@ -360,8 +386,14 @@ export const createGroupReceiptFromOCR = async (
       paid_by: paidBy,
       merchant_name: merchantName,
       total_amount: totalAmount,
-      subtotal: totalAmount,
-      status: 'pending', // ✅ FIXED - changed from 'splitting' to 'pending'
+      subtotal: sub,
+      has_tax: hasTax,
+      tax_amount: taxAmount ?? 0,
+      tax_percentage: hasTax && sub > 0 ? Math.round((taxAmount! / sub) * 100) : 0,
+      has_service: hasService,
+      service_amount: serviceCharge ?? 0,
+      service_percentage: hasService && sub > 0 ? Math.round((serviceCharge! / sub) * 100) : 0,
+      status: 'pending',
       receipt_image_url: imageUrl ?? null,
     })
     .select()
@@ -434,8 +466,8 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
 
 // Delete receipt
 export const deleteGroupReceipt = async (receiptId: string): Promise<void> => {
-  // Mark all settlements as paid/settled before deleting the receipt
-  await supabase.from('group_settlements').update({ status: 'paid' }).eq('receipt_id', receiptId);
+  // Mark all settlements as settled before deleting the receipt
+  await supabase.from('group_settlements').update({ status: 'settled' }).eq('receipt_id', receiptId);
   const { error } = await supabase.from('group_receipts').delete().eq('id', receiptId);
   if (error) throw error;
 };
@@ -523,7 +555,7 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
   // Get all pending settlements where this user owes money
   const { data: settlements, error } = await supabase
     .from('group_settlements')
-    .select('id, receipt_id, group_id, from_user, payer_id, to_user, payee_id, total_amount, amount, status')
+    .select('id, receipt_id, from_user, payer_id, to_user, payee_id, total_amount, amount, status')
     .or(`from_user.eq.${userId},payer_id.eq.${userId}`)
     .neq('status', 'paid');
 
@@ -540,7 +572,7 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
 
   const result: BalanceItem[] = [];
   for (const settlement of owingSettlements) {
-    // Get receipt info
+    // Get receipt info (includes group_id via join)
     const { data: receipt } = await supabase
       .from('group_receipts')
       .select('merchant_name, created_at, group_id, group_receipt_items(name, item_claims(user_id))')
@@ -549,11 +581,11 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
 
     if (!receipt) continue;
 
-    // Get group name
+    // Get group name using group_id from the receipt (not from settlement)
     const { data: group } = await supabase
       .from('groups')
       .select('name')
-      .eq('id', settlement.group_id ?? receipt.group_id)
+      .eq('id', receipt.group_id)
       .single();
 
     // Get payer name
@@ -570,7 +602,7 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
     result.push({
       settlementId: settlement.id,
       receiptId: settlement.receipt_id,
-      groupId: settlement.group_id ?? receipt.group_id,
+      groupId: receipt.group_id,
       groupName: group?.name ?? 'Group',
       merchantName: receipt.merchant_name ?? 'Unknown',
       receiptDate: receipt.created_at,
