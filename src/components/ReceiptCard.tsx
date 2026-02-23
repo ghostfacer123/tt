@@ -15,9 +15,9 @@ export const ReceiptCard: React.FC<ReceiptCardProps> = ({ receipt, onPress }) =>
   const { t } = useTranslation();
 
   const statusColor =
-    receipt.status === 'settled'
+    receipt.status === 'settled' || receipt.status === 'archived'
       ? '#22c55e'
-      : receipt.status === 'splitting'
+      : receipt.status === 'pending'
       ? theme.colors.primary
       : '#f59e0b';
 

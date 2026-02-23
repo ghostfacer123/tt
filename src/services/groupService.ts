@@ -523,9 +523,15 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
   // Get all pending settlements where this user owes money
   const { data: settlements, error } = await supabase
     .from('group_settlements')
-    .select('id, receipt_id, group_id, from_user, to_user, total_amount, amount, status')
+    .select('id, receipt_id, group_id, from_user, payer_id, to_user, payee_id, total_amount, amount, status')
     .or(`from_user.eq.${userId},payer_id.eq.${userId}`)
     .neq('status', 'paid');
+
+  // Filter out any settlements where this user is actually the payee (they're owed money, not owing)
+  const owingSettlements = (settlements ?? []).filter((s: any) => {
+    const payeeId = s.to_user ?? s.payee_id;
+    return payeeId !== userId;
+  });
 
   if (error) {
     console.error('Error loading settlements:', error);
@@ -533,7 +539,7 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
   }
 
   const result: BalanceItem[] = [];
-  for (const settlement of settlements ?? []) {
+  for (const settlement of owingSettlements) {
     // Get receipt info
     const { data: receipt } = await supabase
       .from('group_receipts')
