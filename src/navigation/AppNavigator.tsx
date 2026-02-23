@@ -30,6 +30,8 @@ import QuickSplitScreen from '../screens/QuickSplitScreen';
 import BalancesScreen from '../screens/BalancesScreen';
 import FriendBalanceDetailScreen from '../screens/FriendBalanceDetailScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import BalanceBreakdownScreen from '../screens/BalanceBreakdownScreen';
+import GroupSettingsScreen from '../screens/GroupSettingsScreen';
 import type { ReceiptData } from '../services/mindeeOCR';
 import type { SplitResultsRouteParams } from '../screens/SplitResultsScreen';
 
@@ -64,6 +66,9 @@ export type RootStackParamList = {
   QuickSplit: undefined;
   Balances: undefined;
   FriendBalanceDetail: { friendId: string; friendName: string };
+  BalanceBreakdown: undefined;
+  GroupSettings: { groupId: string; groupName: string };
+  ArchivedReceipts: { groupId: string };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -213,6 +218,16 @@ const MainNavigator = () => (
     <RootStack.Screen
       name="FriendBalanceDetail"
       component={FriendBalanceDetailScreen}
+      options={{ headerShown: false }}
+    />
+    <RootStack.Screen
+      name="BalanceBreakdown"
+      component={BalanceBreakdownScreen}
+      options={{ headerShown: false }}
+    />
+    <RootStack.Screen
+      name="GroupSettings"
+      component={GroupSettingsScreen}
       options={{ headerShown: false }}
     />
   </RootStack.Navigator>

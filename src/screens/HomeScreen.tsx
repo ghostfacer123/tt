@@ -315,6 +315,7 @@ export default function HomeScreen({ navigation }: Props) {
               totalOwe={totalOwe}
               currency={currency}
               language={language}
+              onOwePress={() => navigation.navigate('BalanceBreakdown')}
             />
             {/* Quick actions */}
             <View style={dynStyles.quickActions}>
