@@ -74,12 +74,12 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
       setMembers(memberData);
 
       if (data) {
-        setHasService(!!(data as any).has_service);
-        setHasTax(!!(data as any).has_tax);
-        setHasDelivery(!!(data as any).has_delivery);
-        if ((data as any).service_percentage) setServicePercent(String((data as any).service_percentage));
-        if ((data as any).tax_percentage) setTaxPercent(String((data as any).tax_percentage));
-        if ((data as any).delivery_fee) setDeliveryFee(String((data as any).delivery_fee));
+        setHasService(!!data.has_service);
+        setHasTax(!!data.has_tax);
+        setHasDelivery(!!data.has_delivery);
+        if (data.service_percentage) setServicePercent(String(data.service_percentage));
+        if (data.tax_percentage) setTaxPercent(String(data.tax_percentage));
+        if (data.delivery_fee) setDeliveryFee(String(data.delivery_fee));
       }
     } catch (error) {
       console.error('Error loading receipt:', error);
@@ -140,30 +140,98 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
   }, [receiptId, fetchReceipt, fetchSettlements]);
 
   const handleToggleClaim = async (item: GroupReceiptItem) => {
-    if (!user) return;
+    if (!user || !receipt) return;
     const isClaimed = item.claimed_by.includes(user.id);
 
-    setReceipt((prev) => {
-      if (!prev) return prev;
+    // Calculate new items state for optimistic update and settlement computation
+    const newItems = receipt.items.map((i) => {
+      if (i.id !== item.id) return i;
       return {
-        ...prev,
-        items: prev.items.map((i) => {
-          if (i.id !== item.id) return i;
-          return {
-            ...i,
-            claimed_by: isClaimed
-              ? i.claimed_by.filter((uid) => uid !== user.id)
-              : [...i.claimed_by, user.id],
-          };
-        }),
+        ...i,
+        claimed_by: isClaimed
+          ? i.claimed_by.filter((uid) => uid !== user.id)
+          : [...i.claimed_by, user.id],
       };
     });
 
+    setReceipt((prev) => (prev ? { ...prev, items: newItems } : prev));
+
     try {
       await claimReceiptItem(item.id, user.id, !isClaimed);
+      // Update pending settlement so payer dashboard reflects claimed items in real-time
+      if (user.id !== receipt.paid_by) {
+        await upsertPendingSettlement(newItems);
+      }
     } catch (error) {
       console.error('Error claiming item:', error);
       fetchReceipt();
+    }
+  };
+
+  // Upsert a pending settlement record based on currently claimed items.
+  // Called whenever items are claimed/unclaimed to keep payer dashboard up-to-date.
+  const upsertPendingSettlement = async (currentItems: GroupReceiptItem[]) => {
+    if (!user || !receipt?.paid_by) return;
+
+    const mySubtotal = currentItems
+      .filter((i) => i.claimed_by.includes(user.id))
+      .reduce((sum, i) => sum + (i.price * i.quantity) / Math.max(i.claimed_by.length, 1), 0);
+
+    if (mySubtotal === 0) {
+      // Remove pending settlement if user unclaimed all items
+      await supabase
+        .from('group_settlements')
+        .delete()
+        .eq('receipt_id', receiptId)
+        .eq('from_user', user.id)
+        .neq('status', 'paid');
+      return;
+    }
+
+    const recSub = currentItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    const prop = recSub > 0 ? mySubtotal / recSub : 0;
+    const svcPct = parseFloat(servicePercent) || 0;
+    const txPct = parseFloat(taxPercent) || 0;
+    const delAmt = parseFloat(deliveryFee) || 0;
+    const svcShare = hasService ? recSub * (svcPct / 100) * prop : 0;
+    const txShare = hasTax ? recSub * (txPct / 100) * prop : 0;
+    const delShare = hasDelivery && members.length > 0 ? delAmt / members.length : 0;
+    const total = mySubtotal + svcShare + txShare + delShare;
+
+    const { data: existing } = await supabase
+      .from('group_settlements')
+      .select('id, status')
+      .eq('receipt_id', receiptId)
+      .eq('from_user', user.id)
+      .maybeSingle();
+
+    if (existing && existing.status !== 'paid') {
+      await supabase
+        .from('group_settlements')
+        .update({
+          items_total: mySubtotal,
+          tax_share: txShare,
+          service_share: svcShare,
+          delivery_share: delShare,
+          total_amount: total,
+          amount: total,
+        })
+        .eq('id', existing.id);
+    } else if (!existing) {
+      await supabase.from('group_settlements').insert({
+        receipt_id: receiptId,
+        from_user: user.id,
+        payer_id: user.id,
+        to_user: receipt.paid_by,
+        payee_id: receipt.paid_by,
+        items_total: mySubtotal,
+        tax_share: txShare,
+        service_share: svcShare,
+        delivery_share: delShare,
+        total_amount: total,
+        amount: total,
+        status: 'pending',
+      });
     }
   };
 
@@ -193,7 +261,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     if (!user || !receipt) return;
 
     if (userSubtotal === 0) {
-      Alert.alert(t('common.error'), t('common.error'));
+      Alert.alert(t('common.error'), t('groups.select_items'));
       return;
     }
 
@@ -206,9 +274,32 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
           text: t('groups.mark_as_paid'),
           onPress: async () => {
             try {
-              await supabase.from('group_settlements').upsert(
-                {
-                  group_id: groupId,
+              // Check for existing settlement (created when items were claimed)
+              const { data: existing } = await supabase
+                .from('group_settlements')
+                .select('id')
+                .eq('receipt_id', receiptId)
+                .eq('from_user', user.id)
+                .maybeSingle();
+
+              if (existing) {
+                // Update existing settlement to paid
+                await supabase
+                  .from('group_settlements')
+                  .update({
+                    items_total: userSubtotal,
+                    tax_share: userTaxShare,
+                    service_share: userServiceShare,
+                    delivery_share: userDeliveryShare,
+                    total_amount: userTotal,
+                    amount: userTotal,
+                    status: 'paid',
+                    paid_at: new Date().toISOString(),
+                  })
+                  .eq('id', existing.id);
+              } else {
+                // Create new settlement as paid (no group_id - column doesn't exist)
+                await supabase.from('group_settlements').insert({
                   receipt_id: receiptId,
                   from_user: user.id,
                   payer_id: user.id,
@@ -222,9 +313,8 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
                   amount: userTotal,
                   status: 'paid',
                   paid_at: new Date().toISOString(),
-                },
-                { onConflict: 'receipt_id,payer_id' }
-              );
+                });
+              }
 
               await checkAndAutoArchive(receiptId);
 
