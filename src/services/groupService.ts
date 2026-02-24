@@ -63,13 +63,22 @@ export interface GroupReceiptItem {
 
 export interface GroupSettlement {
   id: string;
-  group_id: string;
   receipt_id: string;
-  payer_id: string;
-  payee_id: string;
-  amount: number;
+  from_user: string;
+  to_user: string;
+  items_total?: number;
+  delivery_share?: number;
+  service_share?: number;
+  tax_share?: number;
+  /** total_amount is the authoritative settlement amount (includes all fee shares). */
+  total_amount: number;
+  /** amount mirrors total_amount for legacy compatibility. */
+  amount?: number;
   status: 'pending' | 'paid';
+  payment_method?: string;
+  paid_at?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 // ============================================
@@ -378,7 +387,9 @@ export const createGroupReceiptFromOCR = async (
   imageUrl?: string,
   subtotal?: number,
   taxAmount?: number,
-  serviceCharge?: number
+  serviceCharge?: number,
+  deliveryFee?: number,
+  discount?: number
 ): Promise<GroupReceipt> => {
   console.log('📝 Creating group receipt...');
   console.log('🔍 Parameters:', { groupId, uploadedBy, paidBy, merchantName, totalAmount });
@@ -386,6 +397,7 @@ export const createGroupReceiptFromOCR = async (
   const finalSubtotal = subtotal ?? totalAmount;
   const hasTax = !!taxAmount && taxAmount > 0;
   const hasService = !!serviceCharge && serviceCharge > 0;
+  const hasDelivery = !!deliveryFee && deliveryFee > 0;
 
   const { data: receipt, error: receiptError } = await supabase
     .from('group_receipts')
@@ -402,6 +414,8 @@ export const createGroupReceiptFromOCR = async (
       has_service: hasService,
       service_amount: serviceCharge ?? 0,
       service_percentage: hasService && finalSubtotal > 0 ? Math.round((serviceCharge! / finalSubtotal) * 100) : 0,
+      has_delivery: hasDelivery,
+      delivery_fee: deliveryFee ?? 0,
       status: 'pending',
       receipt_image_url: imageUrl ?? null,
     })
@@ -564,15 +578,11 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
   // Get all pending settlements where this user owes money
   const { data: settlements, error } = await supabase
     .from('group_settlements')
-    .select('id, receipt_id, from_user, payer_id, to_user, payee_id, total_amount, amount, status')
-    .or(`from_user.eq.${userId},payer_id.eq.${userId}`)
+    .select('id, receipt_id, from_user, to_user, total_amount, amount, status')
+    .eq('from_user', userId)
     .neq('status', 'paid');
 
-  // Filter out any settlements where this user is actually the payee (they're owed money, not owing)
-  const owingSettlements = (settlements ?? []).filter((s: any) => {
-    const payeeId = s.to_user ?? s.payee_id;
-    return payeeId !== userId;
-  });
+  const owingSettlements = settlements ?? [];
 
   if (error) {
     console.error('Error loading settlements:', error);
@@ -598,7 +608,7 @@ export const loadMyPendingSettlements = async (userId: string): Promise<BalanceI
       .single();
 
     // Get payer name
-    const payeeId = settlement.to_user ?? (settlement as any).payee_id;
+    const payeeId = settlement.to_user;
     const { data: payeeProfile } = payeeId
       ? await supabase.from('profiles').select('name').eq('id', payeeId).single()
       : { data: null };

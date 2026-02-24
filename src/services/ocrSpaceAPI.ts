@@ -284,19 +284,59 @@ const extractReceiptDataFromText = (text: string): ReceiptData => {
 
   // Fallback: standard receipt parsing
   let total = 0;
+  let fallbackSubtotal = 0;
+  let fallbackDiscount = 0;
+  let fallbackDeliveryFee = 0;
+  let fallbackServiceFee = 0;
   const items: ReceiptItem[] = [];
+
+  const deliveryRe = /\b(?:delivery|delivery\s*fee|delivery\s*charge|توصيل)\b/i;
+  const discountRe = /\b(?:discount|خصم|تخفيض)\b/i;
+  const subtotalRe = /\b(?:subtotal|sub\s*total|المجموع\s*الفرعي)\b/i;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    if (totalRe.test(trimmed)) {
+    if (totalRe.test(trimmed) && !subtotalRe.test(trimmed)) {
       const m = trimmed.match(priceRe);
       if (m) total = parseFloat(m[1].replace(',', ''));
       continue;
     }
 
-    if (taxRe.test(trimmed) || serviceRe.test(trimmed) || skipRe.test(trimmed)) continue;
+    if (subtotalRe.test(trimmed)) {
+      const m = trimmed.match(priceRe);
+      if (m) fallbackSubtotal = parseFloat(m[1].replace(',', ''));
+      continue;
+    }
+
+    if (discountRe.test(trimmed)) {
+      const m = trimmed.match(priceRe);
+      if (m) fallbackDiscount = parseFloat(m[1].replace(',', ''));
+      continue;
+    }
+
+    if (deliveryRe.test(trimmed)) {
+      const m = trimmed.match(priceRe);
+      if (m) fallbackDeliveryFee = parseFloat(m[1].replace(',', ''));
+      continue;
+    }
+
+    if (taxRe.test(trimmed)) {
+      const m = trimmed.match(priceRe);
+      if (m && taxAmount === 0) {
+        // already captured in taxAmount above; skip as item
+      }
+      continue;
+    }
+
+    if (serviceRe.test(trimmed)) {
+      const m = trimmed.match(priceRe);
+      if (m) fallbackServiceFee = parseFloat(m[1].replace(',', ''));
+      continue;
+    }
+
+    if (skipRe.test(trimmed)) continue;
 
     const m = trimmed.match(priceRe);
     if (m) {
@@ -312,9 +352,12 @@ const extractReceiptDataFromText = (text: string): ReceiptData => {
     }
   }
 
-  // Fallback: if no explicit total, sum items
+  const effectiveServiceFee = fallbackServiceFee || serviceCharge;
+  const effectiveSubtotal = fallbackSubtotal || (items.length > 0 ? items.reduce((s, i) => s + i.price, 0) : 0);
+
+  // Fallback: if no explicit total, calculate from components
   if (total === 0 && items.length > 0) {
-    total = items.reduce((s, i) => s + i.price, 0);
+    total = effectiveSubtotal + fallbackDeliveryFee + effectiveServiceFee - fallbackDiscount;
   }
 
   // Final fallback: largest amount in text
@@ -332,12 +375,12 @@ const extractReceiptDataFromText = (text: string): ReceiptData => {
     merchantName,
     total,
     taxAmount,
-    serviceCharge,
+    serviceCharge: effectiveServiceFee,
     date,
-    subtotal: total,
-    discount: 0,
-    deliveryFee: 0,
-    serviceFee: serviceCharge,
+    subtotal: effectiveSubtotal || total,
+    discount: fallbackDiscount,
+    deliveryFee: fallbackDeliveryFee,
+    serviceFee: effectiveServiceFee,
     items,
   };
 };
