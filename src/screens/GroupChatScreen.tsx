@@ -255,7 +255,9 @@ export default function GroupChatScreen({ navigation, route }: Props) {
                 receiptImageUrl, // 7️⃣ Image URL ✅
                 receiptData.subtotal, // 8️⃣ Subtotal ✅
                 receiptData.taxAmount, // 9️⃣ Tax amount ✅
-                receiptData.serviceCharge // 🔟 Service charge ✅
+                receiptData.serviceCharge, // 🔟 Service charge ✅
+                receiptData.deliveryFee, // 1️⃣1️⃣ Delivery fee ✅
+                receiptData.discount // 1️⃣2️⃣ Discount ✅
               );
 
               console.log('✅ Receipt created:', receipt.id);

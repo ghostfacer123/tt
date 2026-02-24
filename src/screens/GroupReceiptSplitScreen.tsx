@@ -92,14 +92,14 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     if (!receipt?.paid_by) return;
     const { data } = await supabase
       .from('group_settlements')
-      .select('id, payer_id, from_user, amount, total_amount, status')
+      .select('id, from_user, amount, total_amount, status')
       .eq('receipt_id', receiptId);
 
     const memberMap = new Map(members.map((m) => [m.user_id, m.name]));
     const settlementList: MemberSettlement[] = [];
 
     for (const s of data ?? []) {
-      const memberId = s.from_user ?? s.payer_id;
+      const memberId = s.from_user;
       if (memberId && memberId !== receipt.paid_by) {
         settlementList.push({
           memberId,
@@ -195,7 +195,9 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
     const delAmt = parseFloat(deliveryFee) || 0;
     const svcShare = hasService ? recSub * (svcPct / 100) * prop : 0;
     const txShare = hasTax ? recSub * (txPct / 100) * prop : 0;
-    const delShare = hasDelivery && members.length > 0 ? delAmt / members.length : 0;
+    // Delivery fee is split proportionally (not equally) so each person pays
+    // a share of delivery that matches their share of the subtotal.
+    const delShare = hasDelivery ? delAmt * prop : 0;
     const total = mySubtotal + svcShare + txShare + delShare;
 
     const { data: existing } = await supabase
@@ -221,9 +223,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
       await supabase.from('group_settlements').insert({
         receipt_id: receiptId,
         from_user: user.id,
-        payer_id: user.id,
         to_user: receipt.paid_by,
-        payee_id: receipt.paid_by,
         items_total: mySubtotal,
         tax_share: txShare,
         service_share: svcShare,
@@ -302,9 +302,7 @@ export default function GroupReceiptSplitScreen({ navigation, route }: Props) {
                 await supabase.from('group_settlements').insert({
                   receipt_id: receiptId,
                   from_user: user.id,
-                  payer_id: user.id,
                   to_user: receipt.paid_by,
-                  payee_id: receipt.paid_by,
                   items_total: userSubtotal,
                   tax_share: userTaxShare,
                   service_share: userServiceShare,

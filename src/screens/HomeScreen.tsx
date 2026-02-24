@@ -139,84 +139,24 @@ export default function HomeScreen({ navigation }: Props) {
         }
       }
 
-      // ✅ CALCULATE GROUP RECEIPT BALANCES
+      // ✅ CALCULATE GROUP RECEIPT BALANCES USING SETTLEMENTS
       try {
-        // Get groups user is in
-        const { data: membershipData } = await supabase
-          .from('group_members')
-          .select('group_id')
-          .eq('user_id', user.id);
+        // What others owe you (you are to_user, status pending)
+        const { data: owedToMeSettlements } = await supabase
+          .from('group_settlements')
+          .select('total_amount')
+          .eq('to_user', user.id)
+          .eq('status', 'pending');
 
-        const groupIds = (membershipData ?? []).map((m: any) => m.group_id);
+        // What you owe others (you are from_user, status pending)
+        const { data: iOweSettlements } = await supabase
+          .from('group_settlements')
+          .select('total_amount')
+          .eq('from_user', user.id)
+          .eq('status', 'pending');
 
-        if (groupIds.length > 0) {
-          // Get pending group receipts with item claims
-          const { data: groupReceipts } = await supabase
-            .from('group_receipts')
-            .select(
-              `
-            id,
-            paid_by,
-            total_amount,
-            group_receipt_items (
-              price,
-              quantity,
-              item_claims (user_id)
-            )
-          `
-            )
-            .in('group_id', groupIds)
-            .eq('status', 'pending');
-
-          // Get settled group settlements to avoid double counting
-          const { data: paidSettlements } = await supabase
-            .from('group_settlements')
-            .select('receipt_id, from_user, payer_id, amount')
-            .eq('status', 'paid')
-            .or(`from_user.eq.${user.id},payer_id.eq.${user.id},to_user.eq.${user.id},payee_id.eq.${user.id}`);
-
-          const settledMap = new Map<string, Set<string>>();
-          for (const s of paidSettlements ?? []) {
-            if (!settledMap.has(s.receipt_id)) {
-              settledMap.set(s.receipt_id, new Set());
-            }
-            const settler = s.from_user ?? s.payer_id;
-            if (settler) settledMap.get(s.receipt_id)!.add(settler);
-          }
-
-          for (const receipt of groupReceipts ?? []) {
-            if (receipt.paid_by === user.id) {
-              // User paid the bill — others owe them
-              for (const item of receipt.group_receipt_items ?? []) {
-                const itemTotal = item.price * (item.quantity ?? 1);
-                const claimers: string[] = (item.item_claims ?? []).map((c: any) => c.user_id);
-                const claimerCount = Math.max(claimers.length, 1);
-                for (const claimer of claimers) {
-                  if (claimer !== user.id) {
-                    const settled = settledMap.get(receipt.id)?.has(claimer) ?? false;
-                    if (!settled) {
-                      owed += itemTotal / claimerCount;
-                    }
-                  }
-                }
-              }
-            } else {
-              // Someone else paid — check if user claimed items and hasn't settled
-              const userSettled = settledMap.get(receipt.id)?.has(user.id) ?? false;
-              if (!userSettled) {
-                for (const item of receipt.group_receipt_items ?? []) {
-                  const itemTotal = item.price * (item.quantity ?? 1);
-                  const claimers: string[] = (item.item_claims ?? []).map((c: any) => c.user_id);
-                  const userClaimed = claimers.includes(user.id);
-                  if (userClaimed) {
-                    const claimerCount = Math.max(claimers.length, 1);
-                    owe += itemTotal / claimerCount;
-                  }
-                }
-              }
-            }
-          }
-        }
+        owed += (owedToMeSettlements ?? []).reduce((sum: number, s: any) => sum + (s.total_amount ?? 0), 0);
+        owe += (iOweSettlements ?? []).reduce((sum: number, s: any) => sum + (s.total_amount ?? 0), 0);
       } catch (groupErr) {
         console.warn('⚠️ [Home] Could not calculate group receipt balances:', groupErr);
       }
